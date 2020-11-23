@@ -1,6 +1,7 @@
 import sys
 import os
 import cv2
+import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 import asyncio
@@ -17,6 +18,13 @@ driving_keys = [119, 97, 115, 100, 32]
 speed = 0
 heading = 0
 flags = 0
+sleshR = 240
+sleshG = 240
+sleshB = 240
+now_R = 0
+now_G = 0
+now_B = 0
+
 
 loop = asyncio.get_event_loop()
 rvr = SpheroRvrAsync(
@@ -33,9 +41,10 @@ def keycode_callback(keycode):
 async def color_detected_handler(color_detected_data):
     #print("Color detection data response: ", color_detected_data)
     col_detdata = color_detected_data['ColorDetection']
-    print(col_detdata['R'])
-    print(col_detdata['G'])
-    print(col_detdata['B'])
+    now_R = col_detdata['R']
+    now_G = col_detdata['G']
+    now_B = col_detdata['B']
+    
 
 async def main():
     """
@@ -58,7 +67,13 @@ async def main():
     speed_bu = 0
     heading_bu = 0
     flags_bu = 0
-    
+    rvrstatedic = {"run":0, "rsearch":1, "lsearch":2, "stop":3, "rcvpos":4 } 
+    rvrstate = rvrstatedic["run"] # 状態
+    stime = 0 # runモード開始時間
+    rvrstate_bu = rvrstatedic["rsearch"] # 前の状態
+    rscnt = 0 # 右旋回サーチの回数
+    lscnt = 0 # 左旋回サーチの回数
+
     await rvr.wake()
 
     await rvr.reset_yaw()
@@ -80,37 +95,85 @@ async def main():
         cv2.imshow("Frame", frame)
         key = cv2.waitKey(1)
 
-        
-        if key == 27:
-            break
-        if current_key_code == 119:  # W
-            # if previously going reverse, reset speed back to 64
-            if flags == 1:
-                speed = 0
-                #speed = 32
+        if rvrstate == rvrstatedic["run"]:
+            if rvrstate_bu = rvrstate:
+                stime = time.time()
             else:
-                # else increase speed
-                speed += 32
-            # go forward
-            flags = 0
-        elif current_key_code == 97:  # A
-            heading -= 10
-        elif current_key_code == 115:  # S
-            # if previously going forward, reset speed back to 64
-            if flags == 0:
+                if time.time() - stime > 1: # 1秒以上runモードで走れるなら、サーチカウントリセット
+                    rscnt = 0
+                    lscnt = 0
+                else:
+                    rvrstate = rvrstatedic["rcvpos"]
+            if now_R > sleshR and now_G > sleshG and now_B > sleshB: # normal run
+                heading = 0
+                speed = 32
+                flags = 0
+            else: # over root -> position recovery
+                rvrstate = rvrstatedic["rcvpos"]
+                heading = 0
                 speed = 0
-                #speed = 32
-            else:
-                # else increase speed
-                speed += 32
-            # go reverse
-            flags = 1
-        elif current_key_code == 100:  # D
-            heading += 10
-        elif current_key_code == 32:  # SPACE
-            # reset speed and flags, but don't modify heading.
+                flags = 0
+        elif rvrstate == rvrstatedic["rcvpos"]:
+            if now_R > sleshR and now_G > sleshG and now_B > sleshB: # テープ上まで復帰できたなら、右サーチを開始する
+                if rscnt <= 5:
+                    rvrstate = rvrstatedic["rsearch"]
+                elif lscnt <= 10:
+                    rvrstate = rvrstatedic["lsearch"]
+                else:
+                    rvrstate = rvrstatedic["stop"]
+                    
+                heading = 0
+                speed = 0
+                flags = 0
+            else: # テープ上に来るまでバックを継続する
+                heading = 0
+                speed = 32
+                flags = 1
+        elif rvrstate == rvrstatedic["rsearch"]:
+            handing = 10
             speed = 0
             flags = 0
+            rscnt += 1
+            rvrstate = rvrstatedic["run"]:
+        elif rvrstate = rvrstatedic["lsearch"]:
+            handing = -10
+            speed = 0
+            flags = 0
+            lscnt += 1
+            rvrstate = rvrstatedic["run"]:
+        elif rvrstate = rvrstatedic["stop"]: # マニュアルモードに変更
+            if key == 27:
+                break
+            if current_key_code == 119:  # W
+                # if previously going reverse, reset speed back to 64
+                if flags == 1:
+                    speed = 0
+                    #speed = 32
+                else:
+                    # else increase speed
+                    speed += 32
+                # go forward
+                flags = 0
+            elif current_key_code == 97:  # A
+                heading -= 10
+            elif current_key_code == 115:  # S
+                # if previously going forward, reset speed back to 64
+                if flags == 0:
+                    speed = 0
+                    #speed = 32
+                else:
+                    # else increase speed
+                    speed += 32
+                # go reverse
+                flags = 1
+            elif current_key_code == 100:  # D
+                heading += 10
+            elif current_key_code == 32:  # SPACE
+                # reset speed and flags, but don't modify heading.
+                speed = 0
+                flags = 0
+
+        rvrstate_bu = rvrstate
 
         # check the speed value, and wrap as necessary.
         if speed > 255:
