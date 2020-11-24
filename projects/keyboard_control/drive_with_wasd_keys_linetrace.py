@@ -18,9 +18,9 @@ driving_keys = [119, 97, 115, 100, 32]
 speed = 0
 heading = 0
 flags = 0
-sleshR = 240
-sleshG = 240
-sleshB = 240
+sleshR = 200
+sleshG = 200
+sleshB = 200
 now_R = 0
 now_G = 0
 now_B = 0
@@ -85,7 +85,8 @@ async def main():
         service=RvrStreamingServices.color_detection,
         handler=color_detected_handler
     )
-    await rvr.sensor_control.start(interval=250)
+    await rvr.sensor_control.start(interval=50)
+    
             
     cap = cv2.VideoCapture(0)
     
